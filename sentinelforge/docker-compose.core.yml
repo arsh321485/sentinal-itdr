@@ -1,0 +1,221 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.1
+    container_name: sf-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --advertise-rpc-addr redpanda:33145
+      - --smp 1
+      - --memory 1G
+      - --mode dev-container
+      - --default-log-level=warn
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/redpanda:/var/lib/redpanda/data
+      - ./configs/redpanda:/etc/redpanda
+    ports:
+      - "9092:9092"
+      - "8081:8081"
+      - "9644:9644"
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  vector:
+    image: timberio/vector:0.38-alpine
+    container_name: sf-vector
+    volumes:
+      - ./configs/vector:/etc/vector:ro
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/geolite2:/var/lib/vector/geolite2:ro
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - sentinelforge-net
+    restart: unless-stopped
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.1
+    container_name: sf-fluent-bit
+    volumes:
+      - ./configs/fluent-bit:/fluent-bit/etc:ro
+      - ${SF_CERTS_DIR:-/opt/sentinelforge/certs}:/certs:ro
+    ports:
+      - "5140:5140"
+      - "8888:8888"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - sentinelforge-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: sf-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentinelforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinelforge}
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/postgres:/var/lib/postgresql/data
+      - ./configs/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinelforge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: sf-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/redis:/data
+      - ./configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    container_name: sf-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sentinelforge}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/minio:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: sf-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sentinelforge}
+      KC_DB_USERNAME: ${POSTGRES_USER:-sentinelforge}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./configs/keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: sf-vault
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://vault:8200
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/vault:/vault/data
+      - ./configs/vault/vault.hcl:/vault/config/vault.hcl:ro
+    ports:
+      - "8200:8200"
+    command: server
+    networks:
+      - sentinelforge-net
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.49.0
+    container_name: sf-prometheus
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - sentinelforge-net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.3.1
+    container_name: sf-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/grafana:/var/lib/grafana
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - sentinelforge-net
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: sf-loki
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./configs/loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - ${SF_DATA_DIR:-/opt/sentinelforge/data}/loki:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - sentinelforge-net
+    restart: unless-stopped
+
+networks:
+  sentinelforge-net:
+    name: sentinelforge-net
+    driver: bridge

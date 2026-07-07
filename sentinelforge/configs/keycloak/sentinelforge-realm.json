@@ -1,0 +1,26 @@
+{
+  "realm": "sentinelforge",
+  "enabled": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "tenant-admin",
+        "description": "Full tenant administration"
+      },
+      {
+        "name": "tenant-viewer",
+        "description": "Read-only tenant access"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "sentinelforge-portal",
+      "name": "SentinelForge Portal",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": ["https://*/", "http://localhost/*"],
+      "webOrigins": ["+"]
+    }
+  ]
+}

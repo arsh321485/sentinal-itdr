@@ -1,0 +1,2 @@
+# Known AiTM phishing proxy IPs — update weekly
+# Format: one IP per line

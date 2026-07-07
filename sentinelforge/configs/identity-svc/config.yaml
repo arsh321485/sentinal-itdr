@@ -1,0 +1,44 @@
+tenant_id: default
+company_domain: example.com
+
+connectors:
+  m365:
+    enabled: false
+    pull_interval_minutes: 5
+  google:
+    enabled: false
+    pull_interval_minutes: 5
+
+email_scanner:
+  enabled: true
+  bec_keywords:
+    - wire
+    - transfer
+    - confidential
+    - urgent
+    - escrow
+    - bank details
+  suspicious_extensions:
+    - .exe
+    - .scr
+    - .js
+    - .vbs
+    - .bat
+
+detection:
+  impossible_travel_speed_kmh: 900
+  mfa_fatigue_push_count: 10
+  mfa_fatigue_window_seconds: 300
+  token_theft_window_minutes: 30
+  aitm_proxy_ips_file: /app/config/aitm_proxy_ips.txt
+
+notifications:
+  webhook_url: ""
+
+redpanda:
+  brokers: redpanda:9092
+
+vault:
+  addr: http://vault:8200
+  m365_secret_path: secret/data/tenants/default/m365
+  google_secret_path: secret/data/tenants/default/google

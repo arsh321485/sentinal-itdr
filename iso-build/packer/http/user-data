@@ -1,0 +1,27 @@
+#cloud-config
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  identity:
+    hostname: sentinelforge
+    username: forge
+    password: "forge"
+  ssh:
+    install-server: true
+    allow-pw: true
+  storage:
+    layout:
+      name: direct
+  packages:
+    - curl
+    - git
+    - openssl
+    - ca-certificates
+  late-commands:
+    - curtin in-target --target=/target -- curl -fsSL https://get.docker.com | sh
+    - curtin in-target --target=/target -- usermod -aG docker forge
+    - curtin in-target --target=/target -- systemctl enable docker
+    - curtin in-target --target=/target -- swapoff -a
+    - curtin in-target --target=/target -- sed -i '/swap/d' /etc/fstab

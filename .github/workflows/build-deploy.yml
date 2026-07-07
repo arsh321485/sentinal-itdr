@@ -1,0 +1,107 @@
+name: Build and Deploy SentinelForge ITDR
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'sentinelforge/**'
+      - 'iso-build/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      build_image:
+        description: 'Build ISO/QCOW2 after deploy'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  DEPLOY_PATH: /opt/sentinelforge-build
+  SF_INSTALL_DIR: /opt/sentinelforge
+
+jobs:
+  deploy:
+    name: Deploy to Ubuntu build server
+    runs-on: ubuntu-latest
+    if: github.repository != ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BUILD_SERVER_HOST }}
+          username: ${{ secrets.BUILD_SERVER_USER }}
+          key: ${{ secrets.BUILD_SERVER_SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
+            mkdir -p "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+            if [ -d .git ]; then
+              git fetch origin
+              git reset --hard origin/${{ github.ref_name }}
+            else
+              git clone ${{ github.server_url }}/${{ github.repository }} .
+              git checkout ${{ github.ref_name }}
+            fi
+            chmod +x sentinelforge/*.sh iso-build/build-iso.sh
+            # Sync runtime install if already deployed
+            if [ -d "${{ env.SF_INSTALL_DIR }}" ]; then
+              rsync -a --delete sentinelforge/ "${{ env.SF_INSTALL_DIR }}/"
+              cd "${{ env.SF_INSTALL_DIR }}" && ./update.sh || true
+            fi
+            echo "Deploy complete at $(date)"
+
+  build-image:
+    name: Build ISO/QCOW2 image
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' && inputs.build_image == true ||
+      contains(github.event.head_commit.message, '[build-iso]')
+
+    steps:
+      - name: Trigger ISO build on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BUILD_SERVER_HOST }}
+          username: ${{ secrets.BUILD_SERVER_USER }}
+          key: ${{ secrets.BUILD_SERVER_SSH_KEY }}
+          command_timeout: 120m
+          script: |
+            set -e
+            cd ${{ env.DEPLOY_PATH }}
+            sudo apt-get update
+            sudo apt-get install -y qemu-kvm xorriso genisoimage qemu-utils unzip curl
+            # Ensure kvm access
+            sudo usermod -aG kvm $USER 2>/dev/null || true
+            chmod +x iso-build/build-iso.sh
+            ./iso-build/build-iso.sh all
+            # Publish artifacts to download directory
+            OUTPUT_DIR="${{ env.DEPLOY_PATH }}/iso-build/output"
+            PUBLISH_DIR="/var/www/sentinelforge-artifacts"
+            sudo mkdir -p "$PUBLISH_DIR"
+            sudo cp -a "$OUTPUT_DIR"/* "$PUBLISH_DIR/" 2>/dev/null || true
+            LATEST=$(ls -t "$OUTPUT_DIR"/*.qcow2 2>/dev/null | head -1)
+            echo "Latest artifact: $LATEST"
+            ls -lh "$OUTPUT_DIR"
+
+  client-handoff:
+    name: Client install instructions (artifact summary)
+    needs: build-image
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Summarize
+        run: |
+          echo "## SentinelForge ITDR Build" >> $GITHUB_STEP_SUMMARY
+          echo "Artifacts published on build server at /var/www/sentinelforge-artifacts/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Client deployment" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download QCOW2 or installer ISO from build server" >> $GITHUB_STEP_SUMMARY
+          echo "2. Boot VM or install from ISO on client hardware" >> $GITHUB_STEP_SUMMARY
+          echo "3. SSH as forge, run: cd /opt/sentinelforge && sudo ./setup.sh" >> $GITHUB_STEP_SUMMARY

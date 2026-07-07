@@ -1,0 +1,12 @@
+# SentinelForge ITDR build artifacts
+.env
+*.iso
+*.qcow2
+*.ova
+*.vmdk
+output/
+iso-build/output/
+iso-build/cache/
+iso-build/work/
+.vault-root-token
+**/GeoLite2-City.mmdb

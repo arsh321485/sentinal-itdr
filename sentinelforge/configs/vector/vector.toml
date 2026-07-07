@@ -1,0 +1,53 @@
+data_dir = "/var/lib/vector"
+
+[sources.redpanda_identity]
+type = "kafka"
+bootstrap_servers = "redpanda:9092"
+topics = ["^identity\\..*"]
+group_id = "vector-identity-enrichment"
+auto_offset_reset = "latest"
+
+[transforms.ocsf_normalize]
+type = "remap"
+inputs = ["redpanda_identity"]
+source = '''
+.ocsf = {
+  "activity_id": .activity_id ?? 1,
+  "category_uid": 3,
+  "class_uid": 3002,
+  "severity_id": .severity_id ?? 1,
+  "time": .time ?? now(),
+  "actor": .actor ?? {},
+  "src_endpoint": .src_endpoint ?? {}
+}
+.tenant_id = .tenant_id ?? "default"
+'''
+
+[transforms.geoip_enrich]
+type = "remap"
+inputs = ["ocsf_normalize"]
+source = '''
+ip = .src_endpoint.ip
+if ip != null {
+  geo = get_enrichment_table_record("geolite2_city", {"ip": ip}, case_sensitive: false) ?? {}
+  if geo != null {
+    .src_endpoint.location = {
+      "city_name": geo.city_name,
+      "country_iso_code": geo.country_iso_code,
+      "latitude": geo.latitude,
+      "longitude": geo.longitude
+    }
+  }
+}
+'''
+
+[enrichment_tables.geolite2_city]
+type = "geoip"
+path = "/var/lib/vector/geolite2/GeoLite2-City.mmdb"
+
+[sinks.redpanda_enriched]
+type = "kafka"
+inputs = ["geoip_enrich"]
+bootstrap_servers = "redpanda:9092"
+topic = "events.normalized.{{ tenant_id }}"
+encoding.codec = "json"
