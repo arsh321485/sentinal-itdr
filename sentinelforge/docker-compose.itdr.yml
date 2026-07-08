@@ -67,9 +67,8 @@ services:
       - ./configs/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
       - ${SF_CERTS_DIR:-/opt/sentinelforge/certs}:/certs:ro
     ports:
-      - "443:443"
-      - "8443:8443"
-      - "80:80"
+      - "9443:443"
+      - "8080:80"
     depends_on:
       identity-svc:
         condition: service_healthy
