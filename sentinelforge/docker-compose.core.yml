@@ -18,7 +18,7 @@ services:
       - --default-log-level=warn
     volumes:
       - ${SF_DATA_DIR:-/opt/sentinelforge/data}/redpanda:/var/lib/redpanda/data
-      - ./configs/redpanda/redpanda.yaml:/etc/redpanda/redpanda.yaml:ro
+      - ./configs/redpanda:/etc/redpandao
     ports:
       - "9092:9092"
       - "8081:8081"
