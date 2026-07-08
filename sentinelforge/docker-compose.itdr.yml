@@ -48,7 +48,6 @@ services:
     volumes:
       - ${SF_DATA_DIR:-/opt/sentinelforge/data}/neo4j:/data
       - ./configs/neo4j/neo4j.conf:/conf/neo4j.conf:ro
-      - ./configs/neo4j/schema.cypher:/var/lib/neo4j/import/schema.cypher:ro
     ports:
       - "7474:7474"
       - "7687:7687"

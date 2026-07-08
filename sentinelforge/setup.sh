@@ -157,6 +157,21 @@ store_credentials() {
   fi
 }
 
+apply_neo4j_schema() {
+  local pw
+  pw=$(grep '^NEO4J_PASSWORD=' "$SCRIPT_DIR/.env" | cut -d= -f2)
+  log "Applying Neo4j schema..."
+  for _ in $(seq 1 30); do
+    if docker exec sf-neo4j wget -qO- http://localhost:7474 >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  docker exec -i sf-neo4j cypher-shell -u neo4j -p "$pw" \
+    < "$SCRIPT_DIR/configs/neo4j/schema.cypher" \
+    || warn "Neo4j schema apply failed (constraints may already exist)"
+}
+
 start_stack() {
   log "Starting ForgeCore (Layer 1)..."
   cd "$SCRIPT_DIR"
@@ -166,6 +181,8 @@ start_stack() {
 
   log "Starting ForgeID (Layer 2)..."
   docker compose -f docker-compose.itdr.yml --env-file .env up -d --build
+
+  apply_neo4j_schema
 
   log "Creating Redpanda topics..."
   docker exec sf-redpanda rpk topic create identity.m365.default identity.google.default events.normalized.default alerts.itdr.default -p 3 2>/dev/null || true
