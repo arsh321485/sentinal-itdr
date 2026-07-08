@@ -1,6 +1,6 @@
 services:
   redpanda:
-    image: redpandadata/redpanda:v24.1
+    image: redpandadata/redpanda:v24.1.15
     container_name: sf-redpanda
     command:
       - redpanda
