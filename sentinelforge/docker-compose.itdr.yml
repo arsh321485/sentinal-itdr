@@ -68,7 +68,7 @@ services:
       - ${SF_CERTS_DIR:-/opt/sentinelforge/certs}:/certs:ro
     ports:
       - "9443:443"
-      - "8080:80"
+      - "8088:80"
     depends_on:
       identity-svc:
         condition: service_healthy
