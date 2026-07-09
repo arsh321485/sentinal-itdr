@@ -11,74 +11,44 @@ auto_offset_reset = "latest"
 type = "remap"
 inputs = ["redpanda_identity"]
 source = '''
-.ocsf = {}
-
-if exists(.activity_id) {
-  .ocsf.activity_id = .activity_id
-} else {
-  .ocsf.activity_id = 1
+if !exists(.activity_id) {
+  .activity_id = 1
 }
 
-.ocsf.category_uid = 3
-.ocsf.class_uid = 3002
-
-if exists(.severity_id) {
-  .ocsf.severity_id = .severity_id
-} else {
-  .ocsf.severity_id = 1
+if !exists(.severity_id) {
+  .severity_id = 1
 }
 
-if exists(.time) {
-  .ocsf.time = .time
-} else {
-  .ocsf.time = now()
+if !exists(.time) {
+  .time = now()
 }
 
-if exists(.actor) {
-  .ocsf.actor = .actor
-} else {
-  .ocsf.actor = {}
+if !exists(.actor) {
+  .actor = {}
 }
 
-if exists(.src_endpoint) {
-  .ocsf.src_endpoint = .src_endpoint
-} else {
-  .ocsf.src_endpoint = {}
+if !exists(.src_endpoint) {
+  .src_endpoint = {}
 }
 
 if !exists(.tenant_id) {
   .tenant_id = "default"
 }
-'''
 
-[transforms.geoip_enrich]
-type = "remap"
-inputs = ["ocsf_normalize"]
-source = '''
-if exists(.ocsf.src_endpoint.ip) {
-  geo = get_enrichment_table_record!(
-    "geolite2_city",
-    {"ip": .ocsf.src_endpoint.ip}
-  )
-
-  if geo != null {
-    .ocsf.src_endpoint.location = {
-      "city_name": geo.city_name,
-      "country_iso_code": geo.country_iso_code,
-      "latitude": geo.latitude,
-      "longitude": geo.longitude
-    }
-  }
+.ocsf = {
+  "activity_id": .activity_id,
+  "category_uid": 3,
+  "class_uid": 3002,
+  "severity_id": .severity_id,
+  "time": .time,
+  "actor": .actor,
+  "src_endpoint": .src_endpoint
 }
 '''
 
-[enrichment_tables.geolite2_city]
-type = "geoip"
-path = "/var/lib/vector/geolite2/GeoLite2-City.mmdb"
-
 [sinks.redpanda_enriched]
 type = "kafka"
-inputs = ["geoip_enrich"]
+inputs = ["ocsf_normalize"]
 bootstrap_servers = "redpanda:9092"
 topic = "events.normalized.{{ tenant_id }}"
 encoding.codec = "json"
