@@ -34,14 +34,22 @@ services:
   vector:
     image: timberio/vector:0.38.0-alpine
     container_name: sf-vector
+
+    command:
+      - --config
+      - /etc/vector/vector.toml
+
     volumes:
       - ./configs/vector:/etc/vector:ro
       - ${SF_DATA_DIR:-/opt/sentinelforge/data}/geolite2:/var/lib/vector/geolite2:ro
+
     depends_on:
       redpanda:
         condition: service_healthy
+
     networks:
       - sentinelforge-net
+
     restart: unless-stopped
 
   fluent-bit:
