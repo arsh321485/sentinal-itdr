@@ -131,29 +131,45 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     container_name: sf-keycloak
-    command: start-dev --import-realm
+
+    command:
+      - start-dev
+      - --import-realm
+      - --health-enabled=true
+      - --metrics-enabled=true
+
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sentinelforge}
       KC_DB_USERNAME: ${POSTGRES_USER:-sentinelforge}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+
     volumes:
       - ./configs/keycloak:/opt/keycloak/data/import:ro
+
     ports:
       - "8080:8080"
+
     depends_on:
       postgres:
         condition: service_healthy
+
     networks:
       - sentinelforge-net
+
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
       interval: 30s
       timeout: 10s
       retries: 10
       start_period: 60s
+
     restart: unless-stopped
 
   vault:
