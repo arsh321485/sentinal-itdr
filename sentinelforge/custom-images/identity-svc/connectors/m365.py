@@ -56,6 +56,7 @@ def _ocsf_from_signin(record, tenant_id: str) -> IdentityEvent:
     location = _attr(record, "location")
     device = _attr(record, "device_detail", "deviceDetail")
     mfa = _attr(record, "mfa_detail", "mfaDetail")
+    geo = _attr(location, "geo_coordinates", "geoCoordinates")
 
     created = _attr(record, "created_date_time", "createdDateTime")
     if isinstance(created, datetime):
@@ -80,6 +81,8 @@ def _ocsf_from_signin(record, tenant_id: str) -> IdentityEvent:
             "location": {
                 "city": _attr(location, "city"),
                 "country": _attr(location, "country_or_region", "countryOrRegion"),
+                "latitude": _attr(geo, "latitude"),
+                "longitude": _attr(geo, "longitude"),
             },
         },
         session={"session_id": _attr(record, "id")},

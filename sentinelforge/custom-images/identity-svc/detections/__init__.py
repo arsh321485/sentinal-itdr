@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from config import AppConfig
-from detections import aitm_phishing, impossible_travel, mfa_fatigue, rogue_oauth, token_theft
+from detections import (
+    aitm_phishing,
+    failed_login,
+    impossible_travel,
+    mfa_fatigue,
+    rogue_oauth,
+    token_theft,
+)
 from models import Alert, IdentityEvent
 from services.clients import PostgresClient, RedisClient
 
 RULES = [
+    lambda e, r, p, c: failed_login.check(e, r, p, c),
     lambda e, r, p, c: impossible_travel.check(e, r, p, c),
     lambda e, r, p, c: token_theft.check(e, r, c),
     lambda e, r, p, c: mfa_fatigue.check(e, r, p, c),
