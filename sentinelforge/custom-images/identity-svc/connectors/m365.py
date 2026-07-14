@@ -118,7 +118,7 @@ class M365Connector:
                     self.event_handler(payload)
                     count += 1
 
-            asyncio.get_event_loop().run_until_complete(_fetch())
+            asyncio.run(_fetch())
             self.redis.set(self._last_pull_key(), datetime.now(timezone.utc).isoformat())
             self.postgres.update_connector_status(self.config.tenant_id, "m365", count)
             logger.info("Pulled %d sign-in events from M365", count)

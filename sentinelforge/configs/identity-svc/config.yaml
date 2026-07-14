@@ -1,9 +1,9 @@
 tenant_id: default
-company_domain: example.com
+company_domain: secureitlab.com
 
 connectors:
   m365:
-    enabled: false
+    enabled: true
     pull_interval_minutes: 5
   google:
     enabled: false

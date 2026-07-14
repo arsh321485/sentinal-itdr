@@ -403,7 +403,7 @@ nano /opt/sentinelforge/configs/identity-svc/config.yaml
 
 # Store credentials in Vault (use token from .vault-root-token)
 export VAULT_TOKEN=$(cat /opt/sentinelforge/.vault-root-token)
-docker exec -e VAULT_TOKEN="$VAULT_TOKEN" sf-vault vault kv put secret/tenants/default/m365 \
+docker exec -e VAULT_TOKEN="$VAULT_TOKEN" sf-vault vault kv put secr   et/tenants/default/m365 \
   tenant_id="YOUR_AZURE_TENANT_ID" \
   client_id="YOUR_APP_CLIENT_ID" \
   client_secret="YOUR_APP_CLIENT_SECRET"
@@ -511,7 +511,6 @@ This section explains **what each image is** and **exactly what you and the clie
       • Shared drive (OneDrive, etc.)
 
 4. Client installs image on THEIR hardware (see below)
-
 5. Client runs setup.sh with THEIR M365/Google credentials
 
 6. Client ITDR is live — independent of your server
