@@ -18,35 +18,82 @@ from services.clients import KafkaProducer, PostgresClient, RedisClient, VaultCl
 logger = logging.getLogger(__name__)
 
 
-def _ocsf_from_signin(record: dict, tenant_id: str) -> IdentityEvent:
-    location = record.get("location") or {}
-    device = record.get("deviceDetail") or {}
-    status = record.get("status") or {}
-    mfa = record.get("mfaDetail") or {}
+def _attr(obj, *names, default=None):
+    """Read an attribute from a Graph SDK model or dict."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        for name in names:
+            if name in obj and obj[name] is not None:
+                return obj[name]
+        return default
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return default
+
+
+def _model_to_dict(obj):
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _model_to_dict(v) for k, v in obj.items() if not str(k).startswith("_")}
+    if isinstance(obj, (list, tuple)):
+        return [_model_to_dict(v) for v in obj]
+    if hasattr(obj, "__dict__"):
+        return {
+            k: _model_to_dict(v)
+            for k, v in vars(obj).items()
+            if not str(k).startswith("_")
+        }
+    return str(obj)
+
+
+def _ocsf_from_signin(record, tenant_id: str) -> IdentityEvent:
+    location = _attr(record, "location")
+    device = _attr(record, "device_detail", "deviceDetail")
+    mfa = _attr(record, "mfa_detail", "mfaDetail")
+
+    created = _attr(record, "created_date_time", "createdDateTime")
+    if isinstance(created, datetime):
+        event_time = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+    elif isinstance(created, str):
+        event_time = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    else:
+        event_time = datetime.now(timezone.utc)
 
     return IdentityEvent(
         tenant_id=tenant_id,
         source="m365",
         activity_id=1,
-        time=datetime.fromisoformat(record["createdDateTime"].replace("Z", "+00:00"))
-        if record.get("createdDateTime")
-        else datetime.now(timezone.utc),
-        actor={"user": {"email_addr": record.get("userPrincipalName")}},
+        time=event_time,
+        actor={
+            "user": {
+                "email_addr": _attr(record, "user_principal_name", "userPrincipalName"),
+            }
+        },
         src_endpoint={
-            "ip": record.get("ipAddress"),
+            "ip": _attr(record, "ip_address", "ipAddress"),
             "location": {
-                "city": location.get("city"),
-                "country": location.get("countryOrRegion"),
+                "city": _attr(location, "city"),
+                "country": _attr(location, "country_or_region", "countryOrRegion"),
             },
         },
-        session={"session_id": record.get("id")},
-        mfa={"auth_method": mfa.get("authMethod"), "detail": mfa},
-        device={
-            "device_id": device.get("deviceId") or device.get("displayName"),
-            "os": device.get("operatingSystem"),
-            "managed": bool(device.get("isCompliant")),
+        session={"session_id": _attr(record, "id")},
+        mfa={
+            "auth_method": _attr(mfa, "auth_method", "authMethod"),
+            "detail": _model_to_dict(mfa) or {},
         },
-        raw=record,
+        device={
+            "device_id": _attr(device, "device_id", "deviceId")
+            or _attr(device, "display_name", "displayName"),
+            "os": _attr(device, "operating_system", "operatingSystem"),
+            "managed": bool(_attr(device, "is_compliant", "isCompliant", default=False)),
+        },
+        raw=_model_to_dict(record) or {},
     )
 
 
@@ -122,7 +169,7 @@ class M365Connector:
                     request_configuration=config
                 )
                 for record in result.value or []:
-                    event = _ocsf_from_signin(record.__dict__, self.config.tenant_id)
+                    event = _ocsf_from_signin(record, self.config.tenant_id)
                     payload = event.model_dump(mode="json")
                     topic = f"identity.m365.{self.config.tenant_id}"
                     self.kafka.publish(topic, payload)
