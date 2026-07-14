@@ -7,6 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 from azure.identity import ClientSecretCredential
 from msgraph import GraphServiceClient
+from msgraph.generated.audit_logs.sign_ins.sign_ins_request_builder import (
+    SignInsRequestBuilder,
+)
 
 from config import AppConfig
 from models import IdentityEvent
@@ -106,9 +109,17 @@ class M365Connector:
 
             async def _fetch():
                 nonlocal count
-                result = await client.audit_logs.sign_ins.get(
+                query = SignInsRequestBuilder.SignInsRequestBuilderGetQueryParameters(
                     filter=f"createdDateTime ge {filter_time}",
                     top=100,
+                )
+
+                config = SignInsRequestBuilder.SignInsRequestBuilderGetRequestConfiguration(
+                    query_parameters=query
+                )
+
+                result = await client.audit_logs.sign_ins.get(
+                    request_configuration=config
                 )
                 for record in result.value or []:
                     event = _ocsf_from_signin(record.__dict__, self.config.tenant_id)
